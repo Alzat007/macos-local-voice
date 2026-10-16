@@ -1,0 +1,25 @@
+name: Source and privacy checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: No-model unit tests
+        run: python -m unittest discover -s tests -v
+      - name: CLI smoke checks without model dependencies
+        run: |
+          python scripts/setup.py --plan
+          python scripts/prepare_reference.py --help
+          python scripts/voice_app.py --help
+          python scripts/synthesize.py --help
+          python scripts/service.py --help
+      - name: Private-data and credential guard
+        run: python scripts/audit_release.py

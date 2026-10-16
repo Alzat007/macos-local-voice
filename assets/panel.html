@@ -1,0 +1,542 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>我的 AI 声音 · 本地配音</title>
+  <style>
+    :root { --paper:#f4f2e9; --surface:#fffef9; --ink:#203d34; --muted:#69766b; --green:#254f40; --soft:#eaf0e7; --line:#dedfd3; --error:#9a3a2e; }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:30px 28px 44px; background:var(--paper); color:var(--ink); font:15px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; }
+    button,textarea { font:inherit; }
+    button,a,textarea { -webkit-tap-highlight-color:transparent; }
+    button:focus-visible,a:focus-visible,textarea:focus-visible,summary:focus-visible { outline:3px solid #9ebda5; outline-offset:3px; }
+    button { cursor:pointer; }
+    button:disabled { cursor:default; opacity:.55; }
+    [hidden] { display:none !important; }
+    main { max-width:1160px; margin:auto; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:34px; }
+    .brand { display:flex; align-items:center; gap:10px; font-weight:650; letter-spacing:.02em; }
+    .brand-mark { display:flex; align-items:center; justify-content:center; gap:3px; width:31px; height:31px; border-radius:9px; background:var(--green); }
+    .brand-mark i { display:block; width:3px; height:11px; background:#e4eedc; border-radius:3px; }
+    .brand-mark i:nth-child(2) { height:19px; }
+    .brand-mark i:nth-child(3) { height:15px; }
+    .local-badge { display:inline-flex; align-items:center; gap:7px; padding:5px 10px; border:1px solid var(--line); border-radius:7px; font-size:12px; color:var(--muted); }
+    .local-badge::before { content:""; width:6px; height:6px; border-radius:50%; background:var(--green); }
+    .intro { margin-bottom:27px; }
+    .eyebrow { font-size:12px; color:var(--muted); letter-spacing:.08em; margin-bottom:9px; }
+    h1 { margin:0 0 9px; font-size:clamp(29px,4vw,39px); font-weight:650; letter-spacing:-.045em; line-height:1.3; }
+    .intro p { margin:0; color:var(--muted); font-size:15px; }
+    h2,h3,p { margin:0; }
+    h2 { font-size:19px; font-weight:650; line-height:1.4; }
+    h3 { font-size:15px; font-weight:650; }
+    .workspace { display:grid; grid-template-columns:minmax(0,1fr) 330px; align-items:start; gap:22px; }
+    .editor-column,.sidebar { min-width:0; }
+    .sidebar { display:grid; gap:17px; position:sticky; top:22px; }
+    .card { padding:25px; border:1px solid var(--line); border-radius:16px; background:var(--surface); box-shadow:0 3px 14px #203d3403; }
+    .editor-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; margin-bottom:18px; }
+    .editor-head label { display:block; font-size:19px; font-weight:650; line-height:1.4; }
+    .subtle { color:var(--muted); font-size:12px; line-height:1.6; }
+    .editor-head .subtle { margin-top:4px; }
+    .toolbar { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
+    .quiet-button { border:0; border-radius:7px; background:transparent; color:var(--muted); padding:10px 9px; min-height:44px; font-size:12px; }
+    .quiet-button:hover:not(:disabled) { background:var(--soft); color:var(--green); }
+    textarea { display:block; width:100%; min-height:335px; padding:19px 20px; border:1px solid #d4d9cc; border-radius:10px; background:#fbfbf5; color:var(--ink); font-size:17px; line-height:1.9; resize:vertical; }
+    textarea::placeholder { color:#9aa292; }
+    textarea:focus { border-color:#849f86; background:#fffefb; }
+    .editor-foot { display:flex; align-items:center; justify-content:space-between; gap:9px 20px; flex-wrap:wrap; margin-top:14px; }
+    .counter { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+    .counter.over-limit { color:var(--error); }
+    .estimate { color:var(--muted); font-size:12px; }
+    .input-hint { margin-top:11px; color:var(--muted); font-size:12px; }
+    .identity { display:flex; gap:12px; align-items:center; margin-bottom:15px; }
+    .voice-avatar { width:42px; height:42px; flex:0 0 42px; display:grid; place-items:center; border-radius:12px; background:var(--soft); color:var(--green); font-size:20px; font-weight:500; }
+    .identity .subtle { margin-top:3px; }
+    .voice-facts { display:flex; gap:7px; flex-wrap:wrap; }
+    .tag { display:inline-block; padding:3px 8px; border-radius:5px; font-size:11px; line-height:1.5; background:var(--soft); color:var(--green); }
+    .voice-notice { margin-top:11px; color:var(--muted); font-size:12px; line-height:1.8; }
+    .generate-card { border-color:#ced8c7; }
+    .generate-head { display:flex; justify-content:space-between; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
+    .connection { display:inline-flex; align-items:center; gap:7px; color:var(--muted); font-size:12px; }
+    .connection::before { content:""; width:7px; height:7px; border-radius:50%; background:#a4aa9e; }
+    .connection.is-connected::before { background:#4b7353; }
+    .connection.is-reconnecting::before { background:#b98a47; }
+    .primary-button { display:block; width:100%; min-height:49px; padding:13px 16px; border:0; border-radius:9px; background:var(--green); color:#fffef9; font-size:15px; font-weight:600; }
+    .primary-button:hover:not(:disabled) { background:#1b3f31; }
+    .shortcut { display:block; margin-top:9px; color:var(--muted); font-size:11px; text-align:center; }
+    .task-area { border-top:1px solid var(--line); margin-top:18px; padding-top:16px; }
+    .task-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:13px; }
+    .wait-time { color:var(--muted); font-size:11px; font-variant-numeric:tabular-nums; }
+    .stage-track { display:flex; gap:7px; margin:11px 0 0; }
+    .stage-track span { flex:1; padding:5px 2px; border-radius:5px; background:#f0f1e9; color:#899182; font-size:10px; text-align:center; }
+    .stage-track .is-active { background:#e3ecdd; color:var(--green); font-weight:600; }
+    progress { display:block; width:100%; height:4px; margin:12px 0 0; accent-color:var(--green); }
+    .status { margin-top:13px; min-height:40px; color:var(--muted); font-size:12px; line-height:1.75; overflow-wrap:anywhere; white-space:pre-wrap; }
+    .status.error { color:var(--error); }
+    .reconnect-row { display:flex; justify-content:flex-end; margin-top:1px; }
+    .reconnect-row .quiet-button { padding-right:0; }
+    .demo-head { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:5px; }
+    .demo-head h2 { font-size:16px; }
+    audio { display:block; width:100%; min-width:0; height:42px; margin:13px 0 11px; }
+    .text-link { color:var(--green); font-size:12px; text-decoration:underline; text-underline-offset:3px; display:inline-flex; min-height:44px; align-items:center; }
+    .demo-footer { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+    .result-card { margin-top:20px; }
+    .section-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+    .section-heading .subtle { margin-top:5px; }
+    .result-text { margin-top:13px; color:var(--muted); font-size:13px; line-height:1.8; white-space:pre-wrap; overflow-wrap:anywhere; max-height:96px; overflow:auto; }
+    .result-footer { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+    .download { display:inline-flex; align-items:center; min-height:44px; padding:8px 13px; border:1px solid #c8d5c3; border-radius:7px; background:var(--soft); color:var(--green); font-size:12px; font-weight:600; text-decoration:none; }
+    .download:hover { background:#dce8d8; }
+    .history-section { margin-top:30px; }
+    .history-header { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:13px; }
+    .history-heading { display:flex; gap:10px; align-items:center; }
+    .history-count { color:var(--muted); font-size:12px; }
+    .history-empty { padding:24px; border:1px dashed #cfd5c7; border-radius:12px; color:var(--muted); font-size:13px; line-height:1.8; }
+    .history-list { display:grid; gap:12px; }
+    .history-item { padding:19px 20px 13px; border:1px solid var(--line); border-radius:12px; background:var(--surface); min-width:0; }
+    .history-item h3 { font-size:14px; overflow-wrap:anywhere; }
+    .history-meta { margin-top:4px; color:var(--muted); font-size:11px; }
+    .history-text { margin-top:8px; color:var(--muted); font-size:12px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .history-actions { display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; }
+    .history-actions .quiet-button { color:var(--green); }
+    .history-item audio { margin:11px 0 7px; }
+    .notice { margin-top:29px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:11px; line-height:1.85; }
+    @media(max-width:950px) { .workspace { grid-template-columns:minmax(0,1fr) 300px; gap:17px; } .card { padding:21px; } .editor-head { gap:9px; } }
+    @media(max-width:780px) { body { padding:24px 20px 35px; } .workspace { grid-template-columns:minmax(0,1fr); } .editor-column { display:contents; } .sidebar { position:static; grid-template-columns:minmax(0,1fr) minmax(0,1fr); grid-row:2; } .voice-card { grid-column:1/-1; } .result-card { margin-top:0; } .history-section { margin-top:6px; } }
+    @media(max-width:520px) { body { padding:21px 14px 30px; } .topbar { margin-bottom:26px; gap:10px; } .brand { font-size:13px; } .local-badge { font-size:10px; padding:4px 7px; } h1 { font-size:30px; } .intro p { font-size:13px; } .card { padding:19px; border-radius:13px; } .editor-head label { font-size:18px; } .editor-head { margin-bottom:12px; } .toolbar { margin-left:-8px; } textarea { min-height:292px; padding:15px; font-size:16px; } .editor-foot { align-items:flex-start; } .estimate { font-size:11px; } .sidebar { grid-template-columns:minmax(0,1fr); } .generate-card { order:-1; } .voice-card { grid-column:auto; } .history-item { padding:16px 17px 10px; } .notice { margin-top:23px; } }
+    @media(prefers-reduced-motion:reduce) { * { scroll-behavior:auto !important; } }
+  </style>
+</head>
+<body>
+<main>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>我的 AI 声音</div>
+    <span id="local-state" class="local-badge">本机处理 · 不上传</span>
+  </header>
+  <div class="intro">
+    <div class="eyebrow">中文配音工作台</div>
+    <h1>把文稿，读成我的声音。</h1>
+    <p>写下想表达的内容，用已授权的录音作为音色参考，生成可试听、可下载的 AI 配音。</p>
+  </div>
+  <div class="workspace">
+    <div class="editor-column">
+      <section class="card editor-card" aria-label="文字配音">
+        <form id="voice-form">
+          <div class="editor-head">
+            <div><label for="text">配音文稿</label><p id="draft-state" class="subtle">草稿仅保存在本浏览器 · 连接后自动保存</p></div>
+            <div class="toolbar" aria-label="文稿操作">
+              <button id="example" class="quiet-button" type="button">填入短示例</button>
+              <button id="clear-draft" class="quiet-button" type="button" title="仅清空本浏览器的文字草稿，已有配音文件保留" disabled>清空文稿</button>
+              <button id="undo-draft" class="quiet-button" type="button" hidden>撤销清空</button>
+            </div>
+          </div>
+          <textarea id="text" placeholder="从一两句话开始吧。&#10;写下你的文稿，听听它用熟悉的声音读出来。" aria-describedby="input-hint counter estimate" spellcheck="false"></textarea>
+          <div class="editor-foot">
+            <span id="counter" class="counter">0 / 2000 字</span>
+            <span id="estimate" class="estimate">预计朗读时长：—</span>
+          </div>
+          <p id="input-hint" class="input-hint">每次最多 2000 字。朗读时长仅为估算，不代表生成耗时。</p>
+        </form>
+      </section>
+      <section id="result" class="card result-card" aria-label="生成的配音" hidden>
+        <div class="section-heading">
+          <div><h2 id="result-heading">最近生成的配音</h2><p id="result-meta" class="subtle">可试听并下载 WAV 音频</p></div>
+          <span class="tag">AI 合成</span>
+        </div>
+        <p id="result-text" class="result-text"></p>
+        <audio id="audio" controls preload="metadata"></audio>
+        <div class="result-footer"><a id="download" class="download" download="我的AI声音.wav">下载这段配音</a><button id="reuse-result" class="quiet-button" type="button">文稿放回编辑器</button></div>
+      </section>
+      <section class="history-section" aria-labelledby="history-heading">
+        <div class="history-header">
+          <div class="history-heading"><h2 id="history-heading">生成记录</h2><span id="history-count" class="history-count">—</span></div>
+          <button id="refresh-history" type="button" class="quiet-button">刷新记录</button>
+        </div>
+        <p id="history-empty" class="history-empty">连接后会读取本机已有配音。完整试音在专属试音区域。</p>
+        <div id="history-list" class="history-list"></div>
+      </section>
+    </div>
+    <aside class="sidebar" aria-label="声音和生成设置">
+      <section class="card voice-card" aria-label="当前声音身份">
+        <div class="identity"><div class="voice-avatar" aria-hidden="true">我</div><div><h2>我的原声音色</h2><p class="subtle">参考本人提供的口播录音</p></div></div>
+        <div class="voice-facts"><span class="tag">中文</span><span class="tag">本人原声参考</span><span class="tag">本地合成</span></div>
+        <p class="voice-notice">这里生成的是新的 AI 合成音频。音色与自然度请以实际试听为准。</p>
+      </section>
+      <section class="card generate-card" aria-label="生成配音">
+        <div class="generate-head"><h2>生成配音</h2><span id="connection" class="connection">连接中</span></div>
+        <button id="generate" class="primary-button" type="submit" form="voice-form" disabled>用我的声音生成</button>
+        <span id="shortcut" class="shortcut">⌘ / Ctrl + Enter 快捷生成</span>
+        <div id="task-area" class="task-area" hidden>
+          <div class="task-heading"><span id="task-stage">正在准备</span><span id="wait-time" class="wait-time">已等待 00:00</span></div>
+          <div class="stage-track" aria-hidden="true"><span data-stage="loading_model">准备声音</span><span data-stage="generating">生成配音</span><span data-stage="checking">检查音频</span></div>
+          <progress id="progress" aria-label="配音任务正在处理；不显示百分比" hidden></progress>
+        </div>
+        <div id="status" class="status" role="status" aria-live="polite">正在连接本地声音服务…</div>
+        <div class="reconnect-row"><button id="reconnect" class="quiet-button" type="button">重新连接</button></div>
+      </section>
+      <section id="demo" class="card" aria-label="AI 声音试音" hidden>
+        <div class="demo-head"><h2>先听完整试音</h2><span class="tag">AI 合成 · 试音</span></div>
+        <p class="subtle">先熟悉音色，再开始写文稿。</p>
+        <audio id="demo-audio" controls preload="metadata"></audio>
+        <div class="demo-footer"><span id="demo-duration" class="subtle">完整试音</span><a id="demo-download" class="text-link" download="我的AI声音-完整试音.wav">下载试音 WAV</a></div>
+      </section>
+    </aside>
+  </div>
+  <footer class="notice">文字、原声参考与配音均在这台电脑处理，不上传到云端。草稿仅保存在本浏览器，并按声音配置区分；音频保存在本机。配音为 AI 合成，仅用于本人或明确获授权的声音与文稿。</footer>
+</main>
+<script>
+  "use strict";
+  const byId = id => document.getElementById(id);
+  const form = byId("voice-form"), input = byId("text"), button = byId("generate");
+  const status = byId("status"), progress = byId("progress"), audio = byId("audio");
+  const STORAGE = "personal-voice-panel-v2:";
+  const UUID = /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+  const stageLabels = {queued:"等待处理",starting:"正在启动任务",loading_model:"正在准备声音",generating:"正在生成配音",checking:"正在检查音频",preparing:"正在准备文稿",done:"生成完成",error:"生成失败"};
+  let token = "", busy = false, connected = false, configured = false, profileId = null, maxChars = 2000;
+  let activeJob = null, activeText = "", lastResult = null, demoUrl = null, undoDraft = null;
+  let connectTimer = null, pollTimer = null, connecting = false, polling = false, submitting = false, historyLoading = false;
+  let elapsedBase = 0, elapsedObservedAt = 0, typedBeforeProfile = false, storageAvailable = true;
+
+  function readStored(name) {
+    if (!profileId) return null;
+    try { const value = localStorage.getItem(STORAGE + encodeURIComponent(profileId) + ":" + name); return value === null ? null : JSON.parse(value); }
+    catch { return null; }
+  }
+  function writeStored(name, value) {
+    if (!profileId) return;
+    try {
+      const key = STORAGE + encodeURIComponent(profileId) + ":" + name;
+      if (value === null) localStorage.removeItem(key); else localStorage.setItem(key, JSON.stringify(value));
+    } catch { storageAvailable = false; }
+  }
+  function saveDraft() {
+    if (!profileId) {
+      typedBeforeProfile = true;
+      try { localStorage.setItem(STORAGE + "unassigned-draft",JSON.stringify(input.value)); } catch { storageAvailable = false; }
+      byId("draft-state").textContent = storageAvailable ? "草稿已暂存 · 仅本浏览器，连接后确认声音" : "浏览器无法保存草稿 · 刷新前请备份文字";
+      return;
+    }
+    writeStored("draft", input.value);
+    byId("draft-state").textContent = storageAvailable ? "草稿已保存 · 仅在本浏览器" : "浏览器无法保存草稿 · 刷新前请备份文字";
+  }
+  function validJobId(value) { return typeof value === "string" && UUID.test(value); }
+  function jobIdOf(job) { const value = job && (job.job_id || job.id); return validJobId(value) ? value : null; }
+  function safeAudioUrl(value) {
+    if (typeof value !== "string" || value.length > 1800) return null;
+    try {
+      const url = new URL(value, location.origin + "/");
+      if (url.origin !== location.origin || url.username || url.password || url.search || url.hash || !url.pathname.startsWith("/outputs/")) return null;
+      const filename = decodeURIComponent(url.pathname.slice(9));
+      if (!/^[\p{L}\p{N} _().-]+\.wav$/u.test(filename) || filename.includes("..")) return null;
+      return url.pathname;
+    } catch { return null; }
+  }
+  function dateOf(value) {
+    const date = typeof value === "number" ? new Date(value * 1000) : new Date(value || Date.now());
+    return Number.isFinite(date.getTime()) ? date : new Date();
+  }
+  function formatDate(value) {
+    return new Intl.DateTimeFormat("zh-CN", {month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).format(dateOf(value));
+  }
+  function formatDuration(value) {
+    const seconds = Number(value);
+    if (!Number.isFinite(seconds) || seconds <= 0) return "时长待读取";
+    if (seconds < 60) return (Math.round(seconds * 10) / 10) + " 秒";
+    const rounded = Math.round(seconds);
+    return Math.floor(rounded / 60) + " 分 " + rounded % 60 + " 秒";
+  }
+  function downloadName(item) {
+    const parts = new Intl.DateTimeFormat("en-CA", {year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(dateOf(item.created_at));
+    const date = Object.fromEntries(parts.map(part => [part.type,part.value]));
+    const summary = Array.from(String(item.text || item.title || "我的声音").replace(/[\s<>:"/\\|?*\u0000-\u001f]+/g, "").replace(/\.+/g, "")).slice(0,15).join("") || "我的声音";
+    return "配音_" + date.year + date.month + date.day + "-" + date.hour + date.minute + "_" + summary + ".wav";
+  }
+  function setConnection(value) {
+    const element = byId("connection");
+    element.textContent = value === "connected" ? "服务已连接" : value === "reconnecting" ? "正在重连" : "连接中";
+    byId("local-state").textContent = value === "connected" ? "本机在线 · 不上传" : "本机连接中 · 不上传";
+    element.classList.toggle("is-connected", value === "connected");
+    element.classList.toggle("is-reconnecting", value === "reconnecting");
+  }
+  function say(message, isError = false) { status.textContent = message; status.classList.toggle("error", isError); }
+  function updateEditor() {
+    const count = Array.from(input.value).length;
+    byId("counter").textContent = count + " / " + maxChars + " 字";
+    byId("counter").classList.toggle("over-limit", count > maxChars);
+    const spoken = Array.from(input.value.replace(/\s/g, "")).length;
+    byId("estimate").textContent = spoken ? "预计朗读：约 " + formatDuration(Math.max(1,Math.round(spoken / 4))) : "预计朗读时长：—";
+    byId("input-hint").textContent = count > maxChars ? "文稿超出 " + (count - maxChars) + " 字，请缩短后生成。朗读时长仅为估算。" : "每次最多 " + maxChars + " 字。朗读时长仅为估算，不代表生成耗时。";
+    byId("clear-draft").disabled = !input.value;
+    button.disabled = !connected || !configured || busy || connecting || submitting || !input.value.trim() || count > maxChars;
+  }
+  function markBusy(value) {
+    busy = value; progress.hidden = !value; byId("task-area").hidden = !value;
+    form.setAttribute("aria-busy", String(value));
+    button.textContent = value ? "生成中，请稍候…" : "用我的声音生成";
+    if (lastResult) byId("result-heading").textContent = value ? "上一段配音仍可试听" : "最近生成的配音";
+    updateEditor();
+  }
+  function setActiveJob(id, text) {
+    activeJob = id; activeText = typeof text === "string" ? text : activeText;
+    const observedAt = Date.now();
+    const elapsed = elapsedBase + (elapsedObservedAt ? (observedAt - elapsedObservedAt) / 1000 : 0);
+    writeStored("active-job", {job_id:id,text:activeText,observed_at:observedAt,elapsed_seconds:elapsed});
+  }
+  function clearActiveJob() {
+    activeJob = null; activeText = ""; writeStored("active-job", null);
+    clearTimeout(pollTimer); pollTimer = null;
+  }
+  function updateWait() {
+    if (!busy) return;
+    const seconds = Math.max(0,Math.floor(elapsedBase + (Date.now() - elapsedObservedAt) / 1000));
+    const minutes = Math.floor(seconds / 60);
+    byId("wait-time").textContent = "已等待 " + String(minutes).padStart(2,"0") + ":" + String(seconds % 60).padStart(2,"0");
+  }
+  function observeElapsed(job) {
+    const seconds = Number(job.elapsed_seconds);
+    if (job.elapsed_seconds !== undefined && Number.isFinite(seconds) && seconds >= 0) elapsedBase = seconds;
+    else if (job.started_at || job.created_at) elapsedBase = Math.max(0,(Date.now() - dateOf(job.started_at || job.created_at).getTime()) / 1000);
+    else if (!elapsedObservedAt) elapsedBase = 0;
+    else elapsedBase += (Date.now() - elapsedObservedAt) / 1000;
+    elapsedObservedAt = Date.now(); updateWait();
+  }
+  function applyProfile(value) {
+    const next = typeof value === "string" && value ? value : "legacy-local-service";
+    if (next === profileId) return;
+    const previous = profileId;
+    if (previous) saveDraft();
+    activeJob = null; activeText = ""; clearTimeout(pollTimer); pollTimer = null;
+    lastResult = null; audio.pause(); audio.removeAttribute("src"); byId("result").hidden = true;
+    byId("history-list").replaceChildren();
+    profileId = next; storageAvailable = true; undoDraft = null; byId("undo-draft").hidden = true;
+    const draft = readStored("draft");
+    if (previous || !typedBeforeProfile) input.value = typeof draft === "string" ? draft : "";
+    saveDraft();
+    const storedJob = readStored("active-job");
+    if (storedJob && validJobId(storedJob.job_id)) {
+      activeJob = storedJob.job_id; activeText = typeof storedJob.text === "string" ? storedJob.text : "";
+      elapsedBase = Number(storedJob.elapsed_seconds) || 0;
+      elapsedObservedAt = Number(storedJob.observed_at) || Date.now();
+    } else { elapsedBase = 0; elapsedObservedAt = Date.now(); }
+    const storedResult = readStored("last-result");
+    if (storedResult && safeAudioUrl(storedResult.output_url)) showResult(storedResult);
+    updateEditor();
+  }
+  async function api(path, options = {}) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    try {
+      const response = await fetch(path, {cache:"no-store",...options,signal:controller.signal});
+      let data;
+      try { data = await response.json(); } catch { const error = new Error("服务返回了无法读取的内容，请重新连接。"); error.status = response.status; throw error; }
+      if (!response.ok) { const error = new Error(data.error || "操作失败，请稍后重试。"); error.status = response.status; error.jobId = data.job_id; throw error; }
+      return data;
+    } finally { clearTimeout(timeout); }
+  }
+  function showResult(item) {
+    const url = safeAudioUrl(item.output_url);
+    if (!url) return false;
+    lastResult = {output_url:url,text:typeof item.text === "string" ? item.text : "",title:typeof item.title === "string" ? item.title : "",created_at:item.created_at || Date.now() / 1000,duration_seconds:Number(item.duration_seconds) || null};
+    if (audio.getAttribute("src") !== url) { audio.pause(); audio.src = url; }
+    byId("result-heading").textContent = busy ? "上一段配音仍可试听" : "最近生成的配音";
+    byId("result-meta").textContent = formatDate(lastResult.created_at) + " · " + formatDuration(lastResult.duration_seconds) + " · WAV";
+    byId("result-text").textContent = lastResult.text || lastResult.title || "这段音频的文稿暂不可用。";
+    byId("reuse-result").disabled = !lastResult.text;
+    byId("download").href = url; byId("download").download = downloadName(lastResult);
+    byId("result").hidden = false; writeStored("last-result",lastResult);
+    return true;
+  }
+  function showDemo(value) {
+    demoUrl = safeAudioUrl(value);
+    byId("demo").hidden = !demoUrl;
+    if (!demoUrl) return;
+    if (byId("demo-audio").getAttribute("src") !== demoUrl) byId("demo-audio").src = demoUrl;
+    byId("demo-download").href = demoUrl;
+  }
+  function showJob(job) {
+    if (typeof job.text === "string") activeText = job.text;
+    if (job.status === "done") {
+      const resultText = activeText;
+      clearActiveJob(); markBusy(false);
+      if (showResult({...job,text:typeof job.text === "string" ? job.text : resultText})) say("生成完成。请试听内容与音色，再下载使用。");
+      else say("任务已完成，但音频链接无法读取。请刷新生成记录。",true);
+      loadHistory(); return false;
+    }
+    if (job.status === "error") {
+      clearActiveJob(); markBusy(false);
+      say("生成失败：" + (job.error || job.message || "请稍后重试。") + "\n文稿已保留，可以修改后重新生成。",true); return false;
+    }
+    if (!["queued","running"].includes(job.status)) throw new Error("任务状态暂不可读，请重新连接。");
+    markBusy(true); observeElapsed(job);
+    const stage = typeof job.stage === "string" ? job.stage : job.status === "queued" ? "queued" : "generating";
+    const part = Number(job.part), total = Number(job.total);
+    byId("task-stage").textContent = (stageLabels[stage] || "正在处理") + (stage === "generating" && total > 1 && part > 0 ? " · 第 " + part + " / " + total + " 段" : "");
+    document.querySelectorAll("[data-stage]").forEach(element => element.classList.toggle("is-active",element.dataset.stage === stage));
+    say(job.message || "正在处理你的文稿。长文稿可能需要几分钟，刷新后可继续追踪。");
+    if (activeJob) setActiveJob(activeJob,activeText);
+    return true;
+  }
+  function scheduleConnect(delay = 4000, options = {}) { clearTimeout(connectTimer); connectTimer = setTimeout(() => connect(options),delay); }
+  function schedulePoll(delay = 1800) { clearTimeout(pollTimer); if (activeJob) pollTimer = setTimeout(poll,delay); }
+  async function poll() {
+    if (!activeJob || polling || connecting) { if (activeJob) schedulePoll(); return; }
+    const id = activeJob; polling = true;
+    try {
+      const job = await api("/api/jobs/" + encodeURIComponent(id));
+      if (activeJob !== id) return;
+      if (showJob(job)) schedulePoll();
+    } catch (error) {
+      if (activeJob !== id) return;
+      connected = false; setConnection("reconnecting"); updateEditor();
+      if (error.status === 404) {
+        say("原任务暂时无法找到，正在确认本地服务状态。文稿与已有配音已保留。",true);
+        scheduleConnect(0,{missingJob:id});
+      } else {
+        say("连接暂时中断，正在自动重连。文稿与已有配音已保留。",true);
+        scheduleConnect();
+      }
+    } finally { polling = false; }
+  }
+  async function connect(options = {}) {
+    if (connecting || submitting) return;
+    connecting = true; clearTimeout(connectTimer); clearTimeout(pollTimer);
+    byId("reconnect").disabled = true; updateEditor();
+    try {
+      const state = await api("/api/status");
+      if (state.service !== "personal-voice-local-v1" || typeof state.csrf_token !== "string" || !state.csrf_token) throw new Error("声音服务不匹配，请使用本目录的启动器。");
+      applyProfile(state.profile_id);
+      try { localStorage.setItem(STORAGE + "last-profile",JSON.stringify(profileId)); localStorage.removeItem(STORAGE + "unassigned-draft"); } catch { storageAvailable = false; saveDraft(); }
+      token = state.csrf_token; connected = true; configured = state.ready === true; setConnection("connected");
+      document.querySelector(".voice-card h2").textContent = configured ? "我的原声音色" : "尚未配置声音";
+      document.querySelector(".voice-card .identity .subtle").textContent = configured ? "参考本人或已获授权的录音" : "源码不包含预置的个人声音";
+      maxChars = Number.isInteger(state.max_chars) ? Math.min(2000,Math.max(1,state.max_chars)) : 2000;
+      showDemo(state.demo_url);
+      const current = state.current_job;
+      const currentId = typeof current === "string" && validJobId(current) ? current : jobIdOf(current);
+      if (currentId) {
+        setActiveJob(currentId,current && current.text);
+        if (current && typeof current === "object" && current.status) {
+          if (showJob(current)) schedulePoll(600);
+        } else { markBusy(true); say("已恢复正在运行的任务，正在读取状态…"); schedulePoll(600); }
+      } else if (options.missingJob) {
+        if (state.busy) {
+          markBusy(true); say("服务正在处理其他任务，正在确认状态。原文稿与已有配音已保留。"); scheduleConnect(4000,options);
+        } else {
+          clearActiveJob(); markBusy(false);
+          say("服务已重新启动，原任务无法继续追踪。文稿已保留，可重新生成。",true);
+        }
+      } else if (activeJob) {
+        markBusy(true); updateWait(); say("已恢复上次任务，正在确认生成结果…"); schedulePoll(600);
+      } else if (state.busy) {
+        markBusy(true); elapsedObservedAt = elapsedObservedAt || Date.now();
+        say("本地服务正在处理任务，正在读取任务状态。请稍候。"); scheduleConnect();
+      } else if (!configured) {
+        markBusy(false);
+        say("尚未完成声音设置：" + (state.setup_message || "请先安装依赖、下载模型并准备授权的声音参考。") + "\n请按 README 的首次设置步骤完成后，点击重新连接。",true);
+      } else { markBusy(false); say(input.value.trim() ? "准备好了。确认文稿后即可生成。" : "准备好了，输入文稿即可生成。"); }
+      updateEditor(); loadHistory();
+    } catch (error) {
+      connected = false; setConnection("reconnecting"); updateEditor();
+      say(error.message.includes("不匹配") ? error.message : "本地声音服务暂未连接，正在自动重试。请确认本目录的启动器已打开。",true);
+      scheduleConnect(4000,options);
+    } finally { connecting = false; byId("reconnect").disabled = false; updateEditor(); }
+  }
+  function replaceDraft(text, undoLabel = "撤销替换") {
+    if (typeof text !== "string") return;
+    if (input.value !== text) { undoDraft = input.value; byId("undo-draft").hidden = false; byId("undo-draft").textContent = undoLabel; }
+    input.value = text; saveDraft(); updateEditor(); input.focus();
+  }
+  function historyItem(item) {
+    const article = document.createElement("article"); article.className = "history-item";
+    const title = document.createElement("h3"); title.textContent = String(item.title || Array.from(item.text || "配音音频").slice(0,26).join(""));
+    const meta = document.createElement("p"); meta.className = "history-meta"; meta.textContent = formatDate(item.created_at) + " · " + formatDuration(item.duration_seconds) + " · AI 合成";
+    article.append(title,meta);
+    if (item.text) { const text = document.createElement("p"); text.className = "history-text"; text.textContent = item.text; article.append(text); }
+    const player = document.createElement("audio"); player.controls = true; player.preload = "none"; player.src = item.output_url; player.setAttribute("aria-label","试听：" + title.textContent);
+    const actions = document.createElement("div"); actions.className = "history-actions";
+    const download = document.createElement("a"); download.className = "text-link"; download.textContent = "下载 WAV"; download.href = item.output_url; download.download = downloadName(item);
+    const reuse = document.createElement("button"); reuse.type = "button"; reuse.className = "quiet-button"; reuse.textContent = "文稿放回编辑器"; reuse.disabled = !item.text;
+    reuse.addEventListener("click",() => { replaceDraft(item.text); input.scrollIntoView({block:"center",behavior:"smooth"}); });
+    player.addEventListener("loadedmetadata",() => { if (Number.isFinite(player.duration)) meta.textContent = formatDate(item.created_at) + " · " + formatDuration(player.duration) + " · AI 合成"; });
+    actions.append(download,reuse); article.append(player,actions); return article;
+  }
+  async function loadHistory() {
+    if (!connected || historyLoading) return;
+    const requestProfile = profileId; historyLoading = true; byId("refresh-history").disabled = true;
+    try {
+      const data = await api("/api/history");
+      if (requestProfile !== profileId) return;
+      if (!Array.isArray(data.items)) throw new Error("历史记录暂不可读。");
+      const seen = new Set();
+      const items = data.items.slice(0,50).map(item => {
+        if (!item || typeof item !== "object") return null;
+        const url = safeAudioUrl(item.output_url);
+        if (!url || seen.has(url) || item.is_demo || url === demoUrl) return null;
+        seen.add(url);
+        return {...item,output_url:url,text:typeof item.text === "string" ? item.text : "",title:typeof item.title === "string" ? item.title : ""};
+      }).filter(Boolean).sort((a,b) => dateOf(b.created_at) - dateOf(a.created_at));
+      const regular = items;
+      byId("history-list").replaceChildren(...regular.map(historyItem));
+      byId("history-count").textContent = regular.length + " 段";
+      byId("history-empty").hidden = regular.length > 0;
+      byId("history-empty").textContent = "还没有正式配音记录。先写一小段文稿，生成的音频会保存在本机，并显示在这里。";
+      if (!lastResult && regular[0]) showResult(regular[0]);
+    } catch {
+      if (requestProfile !== profileId) return;
+      byId("history-empty").hidden = false;
+      byId("history-empty").textContent = byId("history-list").childElementCount > 0 ? "刷新记录暂时失败，已保留上次读取的记录。配音仍可正常生成，稍后可再试。" : "暂时无法读取生成记录。配音仍可正常生成，已有音频保留在本机；稍后可点击“刷新记录”。";
+      if (!byId("history-list").childElementCount) byId("history-count").textContent = "暂不可读";
+    } finally { historyLoading = false; byId("refresh-history").disabled = false; }
+  }
+  input.addEventListener("input",() => { undoDraft = null; byId("undo-draft").hidden = true; saveDraft(); updateEditor(); });
+  byId("example").addEventListener("click",() => replaceDraft("今天，给自己留一点时间。把想说的话写下来，让熟悉的声音，陪你慢慢表达。"));
+  byId("clear-draft").addEventListener("click",() => replaceDraft("","撤销清空"));
+  byId("undo-draft").addEventListener("click",() => { if (undoDraft === null) return; input.value = undoDraft; undoDraft = null; byId("undo-draft").hidden = true; saveDraft(); updateEditor(); input.focus(); });
+  byId("reuse-result").addEventListener("click",() => { if (lastResult) { replaceDraft(lastResult.text); input.scrollIntoView({block:"center",behavior:"smooth"}); } });
+  byId("reconnect").addEventListener("click",() => { setConnection("reconnecting"); say("正在重新连接本地声音服务…"); connect(); });
+  byId("refresh-history").addEventListener("click",loadHistory);
+  audio.addEventListener("loadedmetadata",() => {
+    if (!lastResult || !Number.isFinite(audio.duration)) return;
+    lastResult.duration_seconds = audio.duration;
+    byId("result-meta").textContent = formatDate(lastResult.created_at) + " · " + formatDuration(audio.duration) + " · WAV";
+    writeStored("last-result",lastResult);
+  });
+  byId("demo-audio").addEventListener("loadedmetadata",() => { byId("demo-duration").textContent = formatDuration(byId("demo-audio").duration) + " · WAV"; });
+  document.addEventListener("play",event => { if (event.target instanceof HTMLAudioElement) document.querySelectorAll("audio").forEach(player => { if (player !== event.target) player.pause(); }); },true);
+  input.addEventListener("keydown",event => { if (event.key === "Enter" && (event.ctrlKey || event.metaKey) && !event.isComposing) { event.preventDefault(); if (!button.disabled) form.requestSubmit(); } });
+  form.addEventListener("submit",async event => {
+    event.preventDefault();
+    if (busy || !connected || !configured || connecting || submitting) return;
+    const text = input.value.trim();
+    if (!text || Array.from(input.value).length > maxChars) { say("请输入 1–" + maxChars + " 字的文稿。",true); return; }
+    saveDraft(); submitting = true; byId("reconnect").disabled = true;
+    activeText = text; elapsedBase = 0; elapsedObservedAt = Date.now();
+    markBusy(true); byId("task-stage").textContent = "正在提交文稿"; updateWait();
+    document.querySelectorAll("[data-stage]").forEach(element => element.classList.remove("is-active"));
+    say("正在提交文稿，准备你的声音…");
+    try {
+      const job = await api("/api/generate", {method:"POST",headers:{"Content-Type":"application/json","X-Voice-Token":token},body:JSON.stringify({text})});
+      if (!validJobId(job.job_id)) throw new Error("任务编号暂不可读，正在确认服务状态。");
+      setActiveJob(job.job_id,text); clearTimeout(connectTimer); schedulePoll(0);
+    } catch (error) {
+      if (validJobId(error.jobId)) { setActiveJob(error.jobId,text); say("服务已有生成任务，已接续查看该任务。"); schedulePoll(0); }
+      else if (error.status && error.status !== 401 && error.status !== 403 && error.status < 500) { clearActiveJob(); markBusy(false); say(error.message,true); }
+      else { connected = false; setConnection("reconnecting"); updateEditor(); say("提交后连接中断，正在确认任务是否已开始。文稿与已有配音已保留。",true); scheduleConnect(0); }
+    } finally { submitting = false; byId("reconnect").disabled = false; updateEditor(); }
+  });
+  window.addEventListener("online",() => { if (!connected) connect(); });
+  document.addEventListener("visibilitychange",() => { if (!document.hidden && (!connected || activeJob)) connect(); });
+  try {
+    const cachedProfile = JSON.parse(localStorage.getItem(STORAGE + "last-profile") || "null");
+    if (typeof cachedProfile === "string" && cachedProfile) applyProfile(cachedProfile);
+    else {
+      const pendingDraft = JSON.parse(localStorage.getItem(STORAGE + "unassigned-draft") || "null");
+      if (typeof pendingDraft === "string") { input.value = pendingDraft; saveDraft(); }
+    }
+  } catch { /* 浏览器存储不可用时仍可输入和生成。 */ }
+  setInterval(updateWait,1000);
+  updateEditor(); connect();
+</script>
+</body>
+</html>
