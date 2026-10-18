@@ -1,11 +1,13 @@
 ---
 name: macos-local-voice
-description: "Set up and use a local Chinese AI voice studio on Apple Silicon macOS with an authorized voice recording, Qwen3-TTS and MLX. Use for personal voice cloning, text-to-speech, a local voice panel, or its macOS background service; not for cloud avatars or general video editing."
+description: "扎提skill：Set up and use a local Chinese AI voice studio on Apple Silicon macOS with an authorized voice recording, Qwen3-TTS and MLX. Use for personal voice cloning, text-to-speech, a local voice panel, or its macOS background service; not for cloud avatars or general video editing."
 ---
 
-# macOS 本地 AI 配音
+# 扎提skill
 
 将用户本人或明确获授权的录音配置为本地音色参考，通过中文面板或命令行生成 AI 配音。复用已有配置时无需重新提取录音；不是训练新的专属模型，不保证人耳相似度。
+
+显示名称为“扎提skill”，调用标识保留 `$macos-local-voice`，以兼容现有安装、脚本和数据目录。
 
 ## 运行边界
 

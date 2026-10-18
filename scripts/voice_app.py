@@ -600,7 +600,7 @@ def main(argv=None):
     configure(args.data_dir, args.port, args.host)
     DATA.mkdir(mode=0o700, parents=True, exist_ok=True)
     server = LocalVoiceHTTPServer((HOST, PORT), Handler)
-    print(f"本地 AI 配音面板：http://{HOST}:{PORT}", flush=True)
+    print(f"扎提skill · 本地 AI 配音面板：http://{HOST}:{PORT}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

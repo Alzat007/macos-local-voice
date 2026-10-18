@@ -1,6 +1,8 @@
-# macOS Local Voice · Mac 本地 AI 配音 Skill
+# 扎提skill
 
 在 Apple Silicon Mac 上，用本人或明确获授权的录音作为音色参考，将中文文稿生成 AI 配音。包含可安装的 Codex Skill、中文本地面板、草稿保存、配音历史、WAV 下载，以及可选的 macOS 用户后台服务。
+
+项目显示名称为“扎提skill”。为兼容已有安装与分享链接，仓库地址、调用标识 `$macos-local-voice` 和私有数据目录保持不变。
 
 **不包含作者的声音。** 录音、参考文稿、音色配置、配音成品、模型权重和 Python 环境全部保存在仓库外的私有目录，不会随 Skill 分享。
 
