@@ -1,6 +1,6 @@
 # 扎提skill
 
-在 Apple Silicon Mac 上，用本人或明确获授权的录音作为音色参考，将中文文稿生成 AI 配音。包含可安装的 Codex Skill、中文本地面板、草稿保存、配音历史、WAV 下载，以及可选的 macOS 用户后台服务。
+在 Apple Silicon Mac 上，用本人或明确获授权的录音作为音色参考，将中文文稿生成 AI 配音。包含可安装的 Codex Skill、中文本地面板、多音色选择、草稿保存、配音历史、WAV 下载，以及可选的 macOS 用户后台服务。
 
 项目显示名称为“扎提skill”。为兼容已有安装与分享链接，仓库地址、调用标识 `$macos-local-voice` 和私有数据目录保持不变。
 
@@ -50,11 +50,15 @@ python3.12 scripts/prepare_reference.py \
 
 访问 [本机配音面板](http://127.0.0.1:8766)。每次最多 2000 字，生成时显示真实阶段和等待时间；可以刷新页面继续追踪任务。草稿保存在当前浏览器，完成文件保存在本机，历史支持试听、下载和复用文稿。
 
+可以同时保留多个参考音色，在面板选择，或在命令行生成时使用 `--voice <音色ID>`。选择本次音色不会改掉默认项；结果与历史会标明所用音色。音色目录 `voices.json` 保存在私有数据目录，设置方法见[多音色工作流](references/workflow.md#多音色目录)。没有音色目录时，原来的单音色配置继续可用。
+
+希望声音更开朗时，可补录一段带笑意、自然表达的参考声音，用同文案、同响度试听后选择或同时保留。当前流程不提供固定的“开心模式”，实际自然度仍需试听判断。
+
 如需其他位置，各脚本均使用同一个 `--data-dir`；面板支持 `--port`。私有数据目录不能放在 Skill 源码目录里面。命令行生成、后台服务和排障详见 [工作流说明](references/workflow.md)。
 
 ## 隐私与声音授权
 
-默认私有目录为 `~/Library/Application Support/macos-local-voice`，包含 `.venv/`、`models/`、`ref_voice.wav`、`voice_profile.json` 和 `outputs/`。生成程序开启模型离线模式，不上传录音和文稿；安装阶段仍需从 PyPI / Hugging Face 获取公开依赖与模型。
+默认私有目录为 `~/Library/Application Support/macos-local-voice`，包含 `.venv/`、`models/`、`ref_voice.wav`、`voice_profile.json` 和 `outputs/`；启用多音色后还包含 `voices.json` 与候选参考子目录。生成程序开启模型离线模式，不上传录音和文稿；安装阶段仍需从 PyPI / Hugging Face 获取公开依赖与模型。
 
 只使用本人或明确获授权的声音。发布合成音频时按平台要求标注 AI 合成，不把它冒充真人现场录音。参考文稿要准确，不能用猜测的转写生成音色配置。
 

@@ -2,6 +2,7 @@
 """Offline reference-conditioned voice synthesis using explicitly authorized audio."""
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -11,6 +12,7 @@ import time
 from pathlib import Path
 
 from voice_paths import resolve_data_dir
+from voice_catalog import resolve_voice
 
 
 MAX_CHARS = 2000
@@ -74,9 +76,10 @@ def private_asset(data_dir, value):
     return resolved
 
 
-def load_profile(data_dir):
+def load_profile(data_dir, voice_id=None):
     """Validate configuration and consent; this function never imports MLX."""
-    data_dir = resolve_data_dir(data_dir)
+    selected = resolve_voice(data_dir, voice_id)
+    data_dir = selected["directory"]
     profile_path = data_dir / "voice_profile.json"
     if profile_path.is_symlink():
         raise ValueError("Voice profile must be a regular file in the private data directory.")
@@ -118,7 +121,20 @@ def load_profile(data_dir):
     for asset in model.rglob("*"):
         if asset.is_symlink():
             private_asset(data_dir, str(asset))
+    profile["voice_id"] = selected["id"]
+    profile["voice_name"] = selected["name"]
     return profile, model, reference
+
+
+def voice_fingerprint(profile, model, reference):
+    """Bind a queued job to its reference and configuration without publishing either."""
+    digest = hashlib.sha256(json.dumps(
+        [profile, str(model), str(reference)], ensure_ascii=False, sort_keys=True,
+    ).encode("utf-8"))
+    with reference.open("rb") as handle:
+        for block in iter(lambda: handle.read(65536), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def output_target(data_dir, requested):
@@ -158,6 +174,8 @@ def save_outputs(directory, filename, audio, sample_rate, report, writer=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="用已授权的原声参考生成本地 AI 配音；不上传声音、不变调。")
     parser.add_argument("--data-dir", help="Private data directory; defaults to LOCAL_VOICE_DATA_DIR or macOS Application Support.")
+    parser.add_argument("--voice", help="Voice ID from the private voices.json catalog; omitted uses its default.")
+    parser.add_argument("--expected-voice-fingerprint", help=argparse.SUPPRESS)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--text")
     source.add_argument("--text-file", type=Path)
@@ -170,7 +188,10 @@ def main(argv=None):
         raise ValueError("文案须为 1–2000 字。")
     text.encode("utf-8")
     directory, output = output_target(data_dir, args.output)
-    profile, model_path, reference = load_profile(data_dir)
+    profile, model_path, reference = load_profile(data_dir, args.voice)
+    if (args.expected_voice_fingerprint is not None
+            and voice_fingerprint(profile, model_path, reference) != args.expected_voice_fingerprint):
+        raise ValueError("音色配置在任务提交后发生变化，请重新选择并生成。")
     # Heavy runtime imports happen only after --help and local configuration checks.
     os.environ["HF_HUB_OFFLINE"] = "1"
     os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -235,6 +256,7 @@ def main(argv=None):
         "speaker_embedding_cosine": cosine,
         "speaker_similarity_is_not_a_human_listening_verdict": True,
         "human_listening": "not_performed", "method": profile["method"],
+        "voice_id": profile["voice_id"], "voice_name": profile["voice_name"],
         "reference": str(reference), "model_repo": profile["model_repo"],
         "model_path": str(model_path), "offline_generation": True, "voice_uploaded": False,
         "elapsed_seconds": time.monotonic() - began,

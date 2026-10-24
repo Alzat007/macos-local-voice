@@ -20,7 +20,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 from voice_paths import DEFAULT_DATA_DIR, resolve_data_dir
-from synthesize import load_profile
+from synthesize import load_profile, voice_fingerprint
+from voice_catalog import load_catalog, valid_voice_id, valid_voice_name
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -46,7 +47,7 @@ CLIENT_DISCONNECT_ERRORS = (ConnectionError, TimeoutError)
 PUBLIC_JOB_FIELDS = {
     "job_id", "status", "message", "created_at", "started_at", "finished_at",
     "output_url", "filename", "error", "text", "elapsed_seconds", "stage",
-    "part", "total", "duration_seconds",
+    "part", "total", "duration_seconds", "voice_id", "voice_name",
 }
 ALLOWED_HOSTS = {f"127.0.0.1:{PORT}", f"localhost:{PORT}"}
 ALLOWED_ORIGINS = {f"http://{host}" for host in ALLOWED_HOSTS}
@@ -159,7 +160,7 @@ def history_item(directory_fd, filename):
         text, duration = report.get("text"), report.get("duration_seconds")
         if not valid_text(text) or not finite_nonnegative(duration) or not math.isfinite(audio_info.st_mtime):
             return None
-        return {
+        item = {
             "filename": filename,
             "title": text[:22],
             "text": text,
@@ -168,6 +169,9 @@ def history_item(directory_fd, filename):
             "output_url": output_url(filename),
             "is_demo": filename == DEMO_NAME,
         }
+        if valid_voice_id(report.get("voice_id")) and valid_voice_name(report.get("voice_name")):
+            item.update(voice_id=report["voice_id"], voice_name=report["voice_name"])
+        return item
     except (OSError, ValueError, UnicodeError, OverflowError, RecursionError):
         return None
 
@@ -241,7 +245,7 @@ class VoiceGenerationError(RuntimeError):
     """An intentional error message suitable for display in the local panel."""
 
 
-def generate(job_id, text_path, filename):
+def generate(job_id, text_path, filename, voice_id=None, voice_fingerprint=None):
     try:
         update_job(job_id, status="running", stage="starting", message="正在启动本地声音生成。", started_at=time.time())
         target = safe_output(filename)
@@ -249,8 +253,14 @@ def generate(job_id, text_path, filename):
             raise VoiceGenerationError("输出目录不可用。")
         if not PYTHON.is_file() or not SYNTHESIZER.is_file():
             raise VoiceGenerationError("声音生成环境尚未准备好，请稍后再试。")
+        command = [str(PYTHON), str(SYNTHESIZER), "--data-dir", str(DATA),
+                   "--text-file", str(text_path), "--output", str(target)]
+        if voice_id is not None:
+            command.extend(["--voice", voice_id])
+        if voice_fingerprint is not None:
+            command.extend(["--expected-voice-fingerprint", voice_fingerprint])
         process = subprocess.Popen(
-            [str(PYTHON), str(SYNTHESIZER), "--data-dir", str(DATA), "--text-file", str(text_path), "--output", str(target)],
+            command,
             cwd=str(ROOT),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -293,6 +303,8 @@ def generate(job_id, text_path, filename):
         finally:
             os.close(directory_fd)
         result_details = {"duration_seconds": record["duration_seconds"]} if record else {}
+        if record and "voice_id" in record:
+            result_details.update(voice_id=record["voice_id"], voice_name=record["voice_name"])
         update_job(
             job_id,
             status="done",
@@ -398,6 +410,7 @@ class Handler(BaseHTTPRequestHandler):
             with LOCK:
                 job = public_job(JOBS[CURRENT_JOB]) if CURRENT_JOB else None
             ready, setup_message, _ = configuration_status()
+            default_voice, voices = voice_options()
             self.respond(200, {
                 "ready": ready,
                 "setup_required": not ready,
@@ -406,7 +419,9 @@ class Handler(BaseHTTPRequestHandler):
                 "profile_id": PROFILE_ID,
                 "csrf_token": TOKEN,
                 "max_chars": MAX_CHARS,
-                "ui_version": "2.0",
+                "ui_version": "2.1",
+                "voices": voices,
+                "default_voice": default_voice,
                 "busy": bool(job and job["status"] in {"queued", "running"}),
                 "current_job": job,
                 "demo_url": output_url(DEMO_NAME) if demo_available() else None,
@@ -496,8 +511,12 @@ class Handler(BaseHTTPRequestHandler):
             if not 0 < length <= 16000 or self.headers.get("Transfer-Encoding"):
                 raise ValueError("输入太长或请求格式不正确。")
             payload = strict_json(self.rfile.read(length).decode("utf-8"))
-            if not isinstance(payload, dict) or set(payload) != {"text"} or not isinstance(payload["text"], str):
+            if (not isinstance(payload, dict) or "text" not in payload
+                    or set(payload) - {"text", "voice_id"} or not isinstance(payload["text"], str)):
                 raise ValueError("请输入要配音的文字。")
+            requested_voice = payload.get("voice_id")
+            if "voice_id" in payload and not valid_voice_id(requested_voice):
+                raise ValueError("音色编号无效。")
             text = payload["text"].strip()
             if not valid_text(text):
                 raise ValueError("请输入要配音的文字。")
@@ -505,9 +524,16 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
             self.respond(400, {"error": "请输入 1–2000 字的文字，使用正确的请求格式。"})
             return
-        ready, setup_message, setup_code = configuration_status()
+        ready, setup_message, setup_code = configuration_status(requested_voice)
         if not ready:
             self.respond(setup_code, {"error": setup_message})
+            return
+        try:
+            profile, model, reference = load_profile(DATA, requested_voice)
+            selected_voice = profile["voice_id"]
+            fingerprint = voice_fingerprint(profile, model, reference)
+        except (OSError, ValueError):
+            self.respond(409, {"error": "所选音色不可用，请刷新后重新选择。"})
             return
         rejected = None
         with LOCK:
@@ -535,6 +561,8 @@ class Handler(BaseHTTPRequestHandler):
                         "total": None,
                         "message": "配音任务已开始。",
                         "text": text,
+                        "voice_id": selected_voice,
+                        "voice_name": profile["voice_name"],
                         "created_at": created.timestamp(),
                         "_created_monotonic": time.monotonic(),
                     }
@@ -547,7 +575,7 @@ class Handler(BaseHTTPRequestHandler):
         if rejected is not None:
             self.respond(*rejected)
             return
-        threading.Thread(target=generate, args=(job_id, text_path, filename), daemon=True).start()
+        threading.Thread(target=generate, args=(job_id, text_path, filename, selected_voice, fingerprint), daemon=True).start()
         self.respond(202, {"job_id": job_id, "status": "queued"})
 
 
@@ -576,10 +604,10 @@ def configure(data_dir=None, port=8766, host="127.0.0.1"):
     ALLOWED_ORIGINS = {f"http://{host}" for host in ALLOWED_HOSTS}
 
 
-def configuration_status():
+def configuration_status(voice_id=None):
     """Expose a friendly setup state while keeping the unconfigured panel readable."""
     try:
-        load_profile(DATA)
+        load_profile(DATA, voice_id)
     except FileNotFoundError as error:
         return False, str(error), 409
     except ValueError as error:
@@ -589,6 +617,20 @@ def configuration_status():
     if not PYTHON.is_file():
         return False, "本地声音运行环境尚未准备好，请先完成设置。", 409
     return True, "", 200
+
+
+def voice_options():
+    """Return only display fields; each voice has independent readiness."""
+    try:
+        catalog = load_catalog(DATA)
+    except (OSError, ValueError):
+        return None, []
+    options = []
+    for entry in catalog["voices"]:
+        ready, message, _ = configuration_status(entry["id"])
+        options.append({"id": entry["id"], "name": entry["name"],
+                        "ready": ready, "setup_message": message})
+    return catalog["default_voice"], options
 
 
 def main(argv=None):

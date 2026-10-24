@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PRIVATE_DIRS = {'.venv', '.local-voice-runtime', 'models', 'outputs', 'private', 'data', 'logs', '__pycache__'}
-PRIVATE_FILES = {'voice_profile.json', 'voice-ready.json', 'model-download.json', 'sample-check.json', '.env', '.DS_Store'}
+PRIVATE_FILES = {'voice_profile.json', 'voices.json', 'voice-ready.json', 'model-download.json', 'sample-check.json', '.env', '.DS_Store'}
 PRIVATE_SUFFIXES = {'.wav','.mp3','.m4a','.flac','.aiff','.mp4','.mov','.safetensors','.bin','.log','.zip','.skill','.pyc'}
 PATTERNS = [
     ('personal home path', re.compile(r'/' + r'Users/[A-Za-z0-9_.-]+(?:/|\\)')),

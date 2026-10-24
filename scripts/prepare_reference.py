@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import argparse
+from array import array
 import json
 import math
 import os
 from pathlib import Path
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -18,6 +20,54 @@ from voice_paths import resolve_data_dir
 
 
 MODEL_REPO = "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16"
+REFERENCE_RATE = 24000
+PCM16_MAX = 32767 / 32768
+PROTECTED_PEAK = 10 ** (-1 / 20)
+
+
+def float_blocks(path):
+    """Read little-endian float PCM in bounded blocks, rejecting invalid samples."""
+    with path.open("rb") as audio:
+        while raw := audio.read(65536):
+            if len(raw) % 4:
+                raise ValueError("The decoded reference audio is incomplete.")
+            samples = [item[0] for item in struct.iter_unpack("<f", raw)]
+            if not all(math.isfinite(sample) for sample in samples):
+                raise ValueError("The decoded reference audio contains invalid samples.")
+            yield samples
+
+
+def protect_pcm16(decoded, destination, expected_duration):
+    """Quantize float PCM only after measuring peaks; do not compress dynamics."""
+    peak, frames = 0.0, 0
+    for samples in float_blocks(decoded):
+        frames += len(samples)
+        peak = max(peak, max(abs(sample) for sample in samples))
+    duration = frames / REFERENCE_RATE
+    if duration <= 0 or abs(duration - expected_duration) > 0.15:
+        raise ValueError("The recording does not contain the full requested reference interval.")
+    if peak == 0:
+        raise ValueError("The reference audio is entirely silent; select a recording with audible speech.")
+    gain = PROTECTED_PEAK / peak if peak > PCM16_MAX else 1.0
+    output_peak = 0
+    with wave.open(str(destination), "wb") as audio:
+        audio.setnchannels(1)
+        audio.setframerate(REFERENCE_RATE)
+        audio.setsampwidth(2)
+        for samples in float_blocks(decoded):
+            quantized = array("h", (round(sample * gain * 32768) for sample in samples))
+            output_peak = max(output_peak, max(abs(sample) for sample in quantized))
+            if sys.byteorder != "little":
+                quantized.byteswap()
+            audio.writeframesraw(quantized.tobytes())
+    if output_peak == 0:
+        raise ValueError("The reference audio is entirely silent after PCM conversion; select a louder recording.")
+    return {
+        "decoded_peak_dbfs": 20 * math.log10(peak),
+        "applied_gain_db": 20 * math.log10(gain),
+        "output_peak_dbfs": 20 * math.log10(output_peak / 32768),
+        "peak_protection": "fixed_attenuation_when_pcm16_would_clip",
+    }
 
 
 def positive_seconds(value: str) -> float:
@@ -76,13 +126,17 @@ def prepare_reference(args) -> dict:
         "uploaded_to_third_party": False,
     }
     with tempfile.TemporaryDirectory(prefix=".reference-", dir=data_dir) as staging:
+        decoded_audio = Path(staging) / "decoded.f32"
         staged_audio = Path(staging) / "reference.wav"
         subprocess.run(
             [ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error", "-n",
              "-ss", str(args.start), "-i", str(source), "-t", str(args.duration),
-             "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", str(staged_audio)],
+             "-map", "0:a:0", "-vn", "-ac", "1", "-ar", str(REFERENCE_RATE),
+             "-c:a", "pcm_f32le", "-f", "f32le", str(decoded_audio)],
             check=True,
         )
+        preparation = protect_pcm16(decoded_audio, staged_audio, args.duration)
+        profile["reference_preparation"] = preparation
         with wave.open(str(staged_audio), "rb") as audio:
             duration = audio.getnframes() / audio.getframerate()
             if audio.getnchannels() != 1 or audio.getframerate() != 24000 or audio.getsampwidth() != 2:
@@ -119,7 +173,8 @@ def prepare_reference(args) -> dict:
             if created_reference:
                 reference.unlink()
             raise
-    return {"profile": str(profile_path), "reference": str(reference), "duration_seconds": duration}
+    return {"profile": str(profile_path), "reference": str(reference), "duration_seconds": duration,
+            "reference_preparation": preparation}
 
 
 def build_parser() -> argparse.ArgumentParser:

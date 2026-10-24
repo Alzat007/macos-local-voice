@@ -28,8 +28,9 @@ class ReleaseAuditTests(unittest.TestCase):
     def test_private_profile_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            (root/'voice_profile.json').write_text('{}')
-            self.assertTrue(audit.inspect_file(root,Path('voice_profile.json')))
+            for filename in ('voice_profile.json', 'voices.json'):
+                (root/filename).write_text('{}')
+                self.assertTrue(audit.inspect_file(root,Path(filename)))
 
     def test_credentials_are_not_echoed(self):
         with tempfile.TemporaryDirectory() as directory:

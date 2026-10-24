@@ -10,6 +10,7 @@ private/
 data/
 logs/
 voice_profile.json
+voices.json
 voice-ready.json
 model-download.json
 ref_voice.*

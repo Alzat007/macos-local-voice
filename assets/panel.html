@@ -9,9 +9,9 @@
     :root { --paper:#f4f2e9; --surface:#fffef9; --ink:#203d34; --muted:#69766b; --green:#254f40; --soft:#eaf0e7; --line:#dedfd3; --error:#9a3a2e; }
     * { box-sizing:border-box; }
     body { margin:0; padding:30px 28px 44px; background:var(--paper); color:var(--ink); font:15px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; }
-    button,textarea { font:inherit; }
+    button,textarea,select { font:inherit; }
     button,a,textarea { -webkit-tap-highlight-color:transparent; }
-    button:focus-visible,a:focus-visible,textarea:focus-visible,summary:focus-visible { outline:3px solid #9ebda5; outline-offset:3px; }
+    button:focus-visible,a:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible { outline:3px solid #9ebda5; outline-offset:3px; }
     button { cursor:pointer; }
     button:disabled { cursor:default; opacity:.55; }
     [hidden] { display:none !important; }
@@ -56,6 +56,9 @@
     .voice-facts { display:flex; gap:7px; flex-wrap:wrap; }
     .tag { display:inline-block; padding:3px 8px; border-radius:5px; font-size:11px; line-height:1.5; background:var(--soft); color:var(--green); }
     .voice-notice { margin-top:11px; color:var(--muted); font-size:12px; line-height:1.8; }
+    .voice-picker { margin:15px 0 12px; }
+    .voice-picker label { display:block; margin-bottom:6px; color:var(--muted); font-size:12px; }
+    .voice-picker select { width:100%; padding:10px 12px; color:var(--ink); background:#fbfbf5; border:1px solid #d4d9cc; border-radius:8px; }
     .generate-card { border-color:#ced8c7; }
     .generate-head { display:flex; justify-content:space-between; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap; }
     .connection { display:inline-flex; align-items:center; gap:7px; color:var(--muted); font-size:12px; }
@@ -160,6 +163,7 @@
     <aside class="sidebar" aria-label="声音和生成设置">
       <section class="card voice-card" aria-label="当前声音身份">
         <div class="identity"><div class="voice-avatar" aria-hidden="true">我</div><div><h2>我的原声音色</h2><p class="subtle">参考本人提供的口播录音</p></div></div>
+        <div class="voice-picker" id="voice-picker" hidden><label for="voice-select">这次配音使用</label><select id="voice-select" disabled></select></div>
         <div class="voice-facts"><span class="tag">中文</span><span class="tag">本人原声参考</span><span class="tag">本地合成</span></div>
         <p class="voice-notice">这里生成的是新的 AI 合成音频。音色与自然度请以实际试听为准。</p>
       </section>
@@ -194,6 +198,8 @@
   const UUID = /^(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
   const stageLabels = {queued:"等待处理",starting:"正在启动任务",loading_model:"正在准备声音",generating:"正在生成配音",checking:"正在检查音频",preparing:"正在准备文稿",done:"生成完成",error:"生成失败"};
   let token = "", busy = false, connected = false, configured = false, profileId = null, maxChars = 2000;
+  const voiceSelect = byId("voice-select");
+  let voiceChoices = [];
   let activeJob = null, activeText = "", lastResult = null, demoUrl = null, undoDraft = null;
   let connectTimer = null, pollTimer = null, connecting = false, polling = false, submitting = false, historyLoading = false;
   let elapsedBase = 0, elapsedObservedAt = 0, typedBeforeProfile = false, storageAvailable = true;
@@ -260,6 +266,26 @@
     element.classList.toggle("is-reconnecting", value === "reconnecting");
   }
   function say(message, isError = false) { status.textContent = message; status.classList.toggle("error", isError); }
+  function selectedVoice() { return voiceChoices.find(voice => voice.id === voiceSelect.value); }
+  function applyVoiceSelection() {
+    const voice = selectedVoice();
+    if (voice) configured = voice.ready === true;
+    document.querySelector(".voice-card h2").textContent = voice ? voice.name : configured ? "我的原声音色" : "尚未配置声音";
+    document.querySelector(".voice-card .identity .subtle").textContent = configured ? "参考本人或已获授权的录音" : "请先完成所选声音的设置";
+  }
+  function renderVoices(state) {
+    const previous = voiceSelect.value;
+    voiceChoices = Array.isArray(state.voices) ? state.voices.filter(voice => voice && typeof voice.id === "string" && typeof voice.name === "string") : [];
+    const options = voiceChoices.map(voice => {
+      const option = document.createElement("option"); option.value = voice.id;
+      option.textContent = voice.name + (voice.ready ? "" : "（尚未就绪）"); return option;
+    });
+    voiceSelect.replaceChildren(...options);
+    voiceSelect.value = voiceChoices.some(voice => voice.id === previous) ? previous : state.default_voice || "";
+    byId("voice-picker").hidden = voiceChoices.length < 2;
+    applyVoiceSelection();
+  }
+  function voiceLabel(item) { return typeof item.voice_name === "string" && item.voice_name ? " · " + item.voice_name : ""; }
   function updateEditor() {
     const count = Array.from(input.value).length;
     byId("counter").textContent = count + " / " + maxChars + " 字";
@@ -269,6 +295,7 @@
     byId("input-hint").textContent = count > maxChars ? "文稿超出 " + (count - maxChars) + " 字，请缩短后生成。朗读时长仅为估算。" : "每次最多 " + maxChars + " 字。朗读时长仅为估算，不代表生成耗时。";
     byId("clear-draft").disabled = !input.value;
     button.disabled = !connected || !configured || busy || connecting || submitting || !input.value.trim() || count > maxChars;
+    voiceSelect.disabled = !connected || busy || connecting || submitting || !voiceChoices.length;
   }
   function markBusy(value) {
     busy = value; progress.hidden = !value; byId("task-area").hidden = !value;
@@ -310,6 +337,7 @@
     lastResult = null; audio.pause(); audio.removeAttribute("src"); byId("result").hidden = true;
     byId("history-list").replaceChildren();
     profileId = next; storageAvailable = true; undoDraft = null; byId("undo-draft").hidden = true;
+    voiceChoices = []; voiceSelect.replaceChildren();
     const draft = readStored("draft");
     if (previous || !typedBeforeProfile) input.value = typeof draft === "string" ? draft : "";
     saveDraft();
@@ -337,10 +365,10 @@
   function showResult(item) {
     const url = safeAudioUrl(item.output_url);
     if (!url) return false;
-    lastResult = {output_url:url,text:typeof item.text === "string" ? item.text : "",title:typeof item.title === "string" ? item.title : "",created_at:item.created_at || Date.now() / 1000,duration_seconds:Number(item.duration_seconds) || null};
+    lastResult = {output_url:url,text:typeof item.text === "string" ? item.text : "",title:typeof item.title === "string" ? item.title : "",created_at:item.created_at || Date.now() / 1000,duration_seconds:Number(item.duration_seconds) || null,voice_name:typeof item.voice_name === "string" ? item.voice_name : ""};
     if (audio.getAttribute("src") !== url) { audio.pause(); audio.src = url; }
     byId("result-heading").textContent = busy ? "上一段配音仍可试听" : "最近生成的配音";
-    byId("result-meta").textContent = formatDate(lastResult.created_at) + " · " + formatDuration(lastResult.duration_seconds) + " · WAV";
+    byId("result-meta").textContent = formatDate(lastResult.created_at) + " · " + formatDuration(lastResult.duration_seconds) + " · WAV" + voiceLabel(lastResult);
     byId("result-text").textContent = lastResult.text || lastResult.title || "这段音频的文稿暂不可用。";
     byId("reuse-result").disabled = !lastResult.text;
     byId("download").href = url; byId("download").download = downloadName(lastResult);
@@ -368,6 +396,9 @@
       say("生成失败：" + (job.error || job.message || "请稍后重试。") + "\n文稿已保留，可以修改后重新生成。",true); return false;
     }
     if (!["queued","running"].includes(job.status)) throw new Error("任务状态暂不可读，请重新连接。");
+    if (voiceChoices.some(voice => voice.id === job.voice_id)) {
+      voiceSelect.value = job.voice_id; applyVoiceSelection();
+    }
     markBusy(true); observeElapsed(job);
     const stage = typeof job.stage === "string" ? job.stage : job.status === "queued" ? "queued" : "generating";
     const part = Number(job.part), total = Number(job.total);
@@ -408,8 +439,7 @@
       applyProfile(state.profile_id);
       try { localStorage.setItem(STORAGE + "last-profile",JSON.stringify(profileId)); localStorage.removeItem(STORAGE + "unassigned-draft"); } catch { storageAvailable = false; saveDraft(); }
       token = state.csrf_token; connected = true; configured = state.ready === true; setConnection("connected");
-      document.querySelector(".voice-card h2").textContent = configured ? "我的原声音色" : "尚未配置声音";
-      document.querySelector(".voice-card .identity .subtle").textContent = configured ? "参考本人或已获授权的录音" : "源码不包含预置的个人声音";
+      renderVoices(state);
       maxChars = Number.isInteger(state.max_chars) ? Math.min(2000,Math.max(1,state.max_chars)) : 2000;
       showDemo(state.demo_url);
       const current = state.current_job;
@@ -433,7 +463,7 @@
         say("本地服务正在处理任务，正在读取任务状态。请稍候。"); scheduleConnect();
       } else if (!configured) {
         markBusy(false);
-        say("尚未完成声音设置：" + (state.setup_message || "请先安装依赖、下载模型并准备授权的声音参考。") + "\n请按 README 的首次设置步骤完成后，点击重新连接。",true);
+        say("尚未完成声音设置：" + (selectedVoice()?.setup_message || state.setup_message || "请先安装依赖、下载模型并准备授权的声音参考。") + "\n可以选择已就绪的音色，或完成设置后重新连接。",true);
       } else { markBusy(false); say(input.value.trim() ? "准备好了。确认文稿后即可生成。" : "准备好了，输入文稿即可生成。"); }
       updateEditor(); loadHistory();
     } catch (error) {
@@ -450,7 +480,7 @@
   function historyItem(item) {
     const article = document.createElement("article"); article.className = "history-item";
     const title = document.createElement("h3"); title.textContent = String(item.title || Array.from(item.text || "配音音频").slice(0,26).join(""));
-    const meta = document.createElement("p"); meta.className = "history-meta"; meta.textContent = formatDate(item.created_at) + " · " + formatDuration(item.duration_seconds) + " · AI 合成";
+    const meta = document.createElement("p"); meta.className = "history-meta"; meta.textContent = formatDate(item.created_at) + " · " + formatDuration(item.duration_seconds) + " · AI 合成" + voiceLabel(item);
     article.append(title,meta);
     if (item.text) { const text = document.createElement("p"); text.className = "history-text"; text.textContent = item.text; article.append(text); }
     const player = document.createElement("audio"); player.controls = true; player.preload = "none"; player.src = item.output_url; player.setAttribute("aria-label","试听：" + title.textContent);
@@ -458,7 +488,7 @@
     const download = document.createElement("a"); download.className = "text-link"; download.textContent = "下载 WAV"; download.href = item.output_url; download.download = downloadName(item);
     const reuse = document.createElement("button"); reuse.type = "button"; reuse.className = "quiet-button"; reuse.textContent = "文稿放回编辑器"; reuse.disabled = !item.text;
     reuse.addEventListener("click",() => { replaceDraft(item.text); input.scrollIntoView({block:"center",behavior:"smooth"}); });
-    player.addEventListener("loadedmetadata",() => { if (Number.isFinite(player.duration)) meta.textContent = formatDate(item.created_at) + " · " + formatDuration(player.duration) + " · AI 合成"; });
+    player.addEventListener("loadedmetadata",() => { if (Number.isFinite(player.duration)) meta.textContent = formatDate(item.created_at) + " · " + formatDuration(player.duration) + " · AI 合成" + voiceLabel(item); });
     actions.append(download,reuse); article.append(player,actions); return article;
   }
   async function loadHistory() {
@@ -490,6 +520,10 @@
     } finally { historyLoading = false; byId("refresh-history").disabled = false; }
   }
   input.addEventListener("input",() => { undoDraft = null; byId("undo-draft").hidden = true; saveDraft(); updateEditor(); });
+  voiceSelect.addEventListener("change",() => {
+    applyVoiceSelection(); updateEditor();
+    say(configured ? "本次将使用“" + selectedVoice().name + "”。" : selectedVoice()?.setup_message || "所选音色尚未就绪。", !configured);
+  });
   byId("example").addEventListener("click",() => replaceDraft("今天，给自己留一点时间。把想说的话写下来，让熟悉的声音，陪你慢慢表达。"));
   byId("clear-draft").addEventListener("click",() => replaceDraft("","撤销清空"));
   byId("undo-draft").addEventListener("click",() => { if (undoDraft === null) return; input.value = undoDraft; undoDraft = null; byId("undo-draft").hidden = true; saveDraft(); updateEditor(); input.focus(); });
@@ -499,7 +533,7 @@
   audio.addEventListener("loadedmetadata",() => {
     if (!lastResult || !Number.isFinite(audio.duration)) return;
     lastResult.duration_seconds = audio.duration;
-    byId("result-meta").textContent = formatDate(lastResult.created_at) + " · " + formatDuration(audio.duration) + " · WAV";
+    byId("result-meta").textContent = formatDate(lastResult.created_at) + " · " + formatDuration(audio.duration) + " · WAV" + voiceLabel(lastResult);
     writeStored("last-result",lastResult);
   });
   byId("demo-audio").addEventListener("loadedmetadata",() => { byId("demo-duration").textContent = formatDuration(byId("demo-audio").duration) + " · WAV"; });
@@ -509,6 +543,7 @@
     event.preventDefault();
     if (busy || !connected || !configured || connecting || submitting) return;
     const text = input.value.trim();
+    const voiceId = selectedVoice()?.id;
     if (!text || Array.from(input.value).length > maxChars) { say("请输入 1–" + maxChars + " 字的文稿。",true); return; }
     saveDraft(); submitting = true; byId("reconnect").disabled = true;
     activeText = text; elapsedBase = 0; elapsedObservedAt = Date.now();
@@ -516,7 +551,8 @@
     document.querySelectorAll("[data-stage]").forEach(element => element.classList.remove("is-active"));
     say("正在提交文稿，准备你的声音…");
     try {
-      const job = await api("/api/generate", {method:"POST",headers:{"Content-Type":"application/json","X-Voice-Token":token},body:JSON.stringify({text})});
+      const payload = voiceId ? {text,voice_id:voiceId} : {text};
+      const job = await api("/api/generate", {method:"POST",headers:{"Content-Type":"application/json","X-Voice-Token":token},body:JSON.stringify(payload)});
       if (!validJobId(job.job_id)) throw new Error("任务编号暂不可读，正在确认服务状态。");
       setActiveJob(job.job_id,text); clearTimeout(connectTimer); schedulePoll(0);
     } catch (error) {

@@ -7,12 +7,12 @@ import io
 import json
 from pathlib import Path
 import plistlib
+import struct
 import subprocess
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
-import wave
 
 
 SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
@@ -133,11 +133,8 @@ class ReferenceTests(unittest.TestCase):
     def fake_ffmpeg(self, command, **kwargs):
         self.assertIn("-n", command)
         self.assertIn("-nostdin", command)
-        with wave.open(command[-1], "wb") as audio:
-            audio.setnchannels(1)
-            audio.setsampwidth(2)
-            audio.setframerate(24000)
-            audio.writeframes(b"\x01\x00" * 24000 * 6)
+        self.assertIn("pcm_f32le", command)
+        Path(command[-1]).write_bytes(struct.pack("<f", 1 / 32768) * 24000 * 6)
         return subprocess.CompletedProcess(command, 0)
 
     def test_explicit_consent_and_no_network_reference(self):
@@ -181,11 +178,7 @@ class ReferenceTests(unittest.TestCase):
             args = self.make_args(Path(temporary))
 
             def silent_ffmpeg(command, **kwargs):
-                with wave.open(command[-1], "wb") as audio:
-                    audio.setnchannels(1)
-                    audio.setsampwidth(2)
-                    audio.setframerate(24000)
-                    audio.writeframes(b"\0\0" * 24000 * 6)
+                Path(command[-1]).write_bytes(struct.pack("<f", 0) * 24000 * 6)
                 return subprocess.CompletedProcess(command, 0)
 
             with patch.object(reference.shutil, "which", return_value="ffmpeg"), patch.object(reference.subprocess, "run", side_effect=silent_ffmpeg), self.assertRaisesRegex(ValueError, "entirely silent"):

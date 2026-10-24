@@ -64,6 +64,13 @@ class BackendTests(unittest.TestCase):
         self.base = Path(self.temporary.name)
         self.outputs = self.base / "outputs"
         self.outputs.mkdir()
+        (self.base / "models").mkdir()
+        (self.base / "ref_voice.wav").write_bytes(WAV_FIXTURE)
+        (self.base / "voice_profile.json").write_text(json.dumps({
+            "name": "Test voice", "method": "reference", "model_repo": "test/model",
+            "reference_text": "测试文稿", "reference_audio": "ref_voice.wav",
+            "model_path": "models", "consent_confirmed": True,
+        }), encoding="utf-8")
         self.patches = [
             mock.patch.object(app, "OUTPUTS", self.outputs),
             mock.patch.object(app, "DATA", self.base),
@@ -256,7 +263,7 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(status["profile_id"], app.PROFILE_ID)
         self.assertEqual(status["csrf_token"], app.TOKEN)
         self.assertEqual(status["max_chars"], 2000)
-        self.assertEqual(status["ui_version"], "2.0")
+        self.assertEqual(status["ui_version"], "2.1")
         self.assertTrue(status["busy"])
         self.assertEqual(status["current_job"]["job_id"], job_id)
         self.assertEqual(status["demo_url"], app.output_url(app.DEMO_NAME))
